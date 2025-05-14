@@ -1,4 +1,4 @@
-# API Tổng Hợp Giọng Nói (Text-to-Speech) Nâng Cao
+# Internal API Tổng Hợp Giọng Nói (Text-to-Speech) Nâng Cao
 
 Dự án này cung cấp một API mạnh mẽ để chuyển đổi văn bản thành giọng nói, sử dụng mô hình XTTS với khả năng sao chép giọng nói (voice cloning) và hỗ trợ nhiều ngôn ngữ. API được thiết kế với kiến trúc bất đồng bộ sử dụng Celery và Redis để xử lý các tác vụ TTS tốn thời gian, đảm bảo tính phản hồi cao cho client. Dự án được đóng gói hoàn chỉnh bằng Docker để dễ dàng triển khai và có cơ chế xác thực bằng API Key.
 
