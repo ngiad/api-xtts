@@ -30,8 +30,8 @@ Dự án này cung cấp một API mạnh mẽ để chuyển đổi văn bản 
 
 1.  **Clone repository này về máy của bạn:**
     ```bash
-    git clone https://github.com/ngiad/api-xtts-model
-    cd api-xtts-model
+    git clone https://github.com/ngiad/api-xtts.git
+    cd api-xtts
     ```
 
 2.  **Tải về Model Files:**
