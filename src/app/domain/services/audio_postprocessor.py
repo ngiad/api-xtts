@@ -115,7 +115,7 @@ class AudioPostprocessorService:
             return audio_tensor
 
         try:
-            board = Pedalboard(board_effects)  # Sửa ở đây
+            board = Pedalboard(board_effects)  
             processed_audio_pb = board.process(audio_np_for_pb, sample_rate=self.sample_rate)  # Và sửa ở đây
 
             final_processed_np = processed_audio_pb.reshape(-1) if audio_np_for_pb.shape[0] == 1 else processed_audio_pb
