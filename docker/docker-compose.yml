@@ -1,0 +1,125 @@
+services:
+  redis:
+    image: "redis:7-alpine"
+    container_name: tts_redis_service
+    ports:
+      - "127.0.0.1:${REDIS_EXPOSED_PORT:-6379}:6379"
+    volumes:
+      - redis_tts_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  tts_api:
+    build:
+      context: .
+      args:
+        PYTHON_VERSION: "${PYTHON_VERSION:-3.11}"
+        CUDA_PYTORCH_TAG: "${CUDA_PYTORCH_TAG:-cu118}"
+        TORCH_VERSION: "${TORCH_VERSION:-2.1.2}"
+        TORCHVISION_VERSION: "${TORCHVISION_VERSION:-0.16.2}"
+        TORCHAUDIO_VERSION: "${TORCHAUDIO_VERSION:-2.1.2}"
+    container_name: tts_api_flask_service
+    ports:
+      - "${API_PORT:-5000}:5000" 
+    volumes:
+      - ./model:/app_code/model:ro 
+      - ./output:/app_code/output   
+      # - ./app:/app_code/app
+      # - ./run.py:/app_code/run.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONUTF8=1
+      - FLASK_DEBUG=${FLASK_DEBUG:-0} 
+      - MODEL_DIR=/app_code/model
+      - OUTPUT_DIR=/app_code/output
+      - REDIS_HOST=redis 
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USERNAME=${REDIS_USERNAME:-} 
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-} 
+      - REDIS_CELERY_DB=${REDIS_CELERY_DB:-0}
+      - REDIS_CELERY_RESULTS_DB=${REDIS_CELERY_RESULTS_DB:-1}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - VALID_API_KEYS=${VALID_API_KEYS:-your_default_dev_key_1,another_dev_key_2} 
+      - API_KEY_HEADER_NAME=${API_KEY_HEADER_NAME:-X-API-Key}
+      - CELERY_RESULT_EXPIRES=${CELERY_RESULT_EXPIRES:-86400}
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '${API_CPU_LIMIT:-1.0}'     
+          memory: '${API_MEMORY_LIMIT:-1G}' 
+        reservations: 
+          cpus: '${API_CPU_RESERVATION:-0.5}'
+          memory: '${API_MEMORY_RESERVATION:-512M}'
+    restart: unless-stopped
+
+  celery_worker:
+    build:
+      context: .
+      args:
+        PYTHON_VERSION: "${PYTHON_VERSION:-3.11}"
+        CUDA_PYTORCH_TAG: "${CUDA_PYTORCH_TAG:-cu118}"
+        TORCH_VERSION: "${TORCH_VERSION:-2.1.2}"
+        TORCHVISION_VERSION: "${TORCHVISION_VERSION:-0.16.2}"
+        TORCHAUDIO_VERSION: "${TORCHAUDIO_VERSION:-2.1.2}"
+    container_name: tts_celery_worker_service
+    command: celery -A app.celery_app worker -l ${LOG_LEVEL:-INFO} -Q celery,tts_tasks -c 1 --beat
+    user: "appuser" 
+    volumes:
+      - ./model:/app_code/model:ro
+      - ./output:/app_code/output
+      # - ./app:/app_code/app 
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONUTF8=1
+      - MODEL_DIR=/app_code/model
+      - OUTPUT_DIR=/app_code/output
+      - REDIS_HOST=redis
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USERNAME=${REDIS_USERNAME:-}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_CELERY_DB=${REDIS_CELERY_DB:-0}
+      - REDIS_CELERY_RESULTS_DB=${REDIS_CELERY_RESULTS_DB:-1}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CELERY_RESULT_EXPIRES=${CELERY_RESULT_EXPIRES:-86400}
+      # C_FORCE_ROOT=1 #
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy: 
+      resources:
+        limits:
+          cpus: '${WORKER_CPU_LIMIT:-2.0}'        
+          memory: '${WORKER_MEMORY_LIMIT:-8G}'    
+        reservations:
+          cpus: '${WORKER_CPU_RESERVATION:-1.0}'
+          memory: '${WORKER_MEMORY_RESERVATION:-6G}' 
+          devices: 
+            - driver: nvidia
+              capabilities: [gpu, utility, compute]
+              # count: all 
+              count: 1                  
+    restart: unless-stopped
+
+  flower:
+    image: mher/flower:2.0.1
+    container_name: tts_flower_monitor
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://${REDIS_USERNAME:-}:${REDIS_PASSWORD:-}@${REDIS_HOST:-redis}:${REDIS_PORT:-6379}/${REDIS_CELERY_DB:-0}
+      - FLOWER_PORT=${FLOWER_PORT:-5555}
+    depends_on:
+      - redis
+      - celery_worker
+    restart: unless-stopped
+
+volumes:
+  redis_tts_data:
+    driver: local 
