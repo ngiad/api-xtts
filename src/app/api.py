@@ -260,45 +260,48 @@ def get_tts_task_status_endpoint(task_id):
 @app.route('/tts/result/<string:task_id>', methods=['GET'])
 @require_api_key
 def download_tts_result_endpoint(task_id):
-    """Endpoint để tải file âm thanh kết quả của một tác vụ TTS đã hoàn thành."""
-    logger.debug(f"API Result: Nhận yêu cầu tải kết quả cho task_id: {task_id}. IP: {request.remote_addr}")
+    """Endpoint tải file âm thanh kết quả từ tác vụ TTS đã hoàn thành."""
+    client_ip = request.remote_addr
+    logger.debug(f"[TTS Result] Yêu cầu từ IP {client_ip} cho task_id: {task_id}")
+
     try:
         task = generate_tts_task.AsyncResult(task_id, app=celery_app)
-    except Exception as e_get_task:
-        logger.error(f"API Result: Lỗi khi lấy AsyncResult cho task {task_id}: {e_get_task}", exc_info=True)
-        return jsonify({"error": "Không thể kết nối đến backend để lấy kết quả task."}), 503
+    except Exception as e:
+        logger.exception(f"[TTS Result] Không thể lấy AsyncResult cho task_id: {task_id}")
+        return jsonify({"error": "Không thể kết nối đến backend để lấy trạng thái task."}), 503
 
     if task.successful():
-        result_data = task.result
-        actual_filename_to_serve = result_data.get("filename")
+        result = task.result or {}
+        filename = result.get("filename")
 
-        if actual_filename_to_serve and OUTPUT_DIR:
-            file_to_serve_path = os.path.join(OUTPUT_DIR, actual_filename_to_serve)
-            
-            if os.path.exists(file_to_serve_path):
-                logger.info(f"API Result: Chuẩn bị gửi file: '{actual_filename_to_serve}' từ thư mục '{OUTPUT_DIR}' cho task {task_id}.")
-                try:
-                    return send_from_directory(
-                        directory=os.path.abspath(OUTPUT_DIR),
-                        path=actual_filename_to_serve,
-                        as_attachment=True, 
-                        download_name=actual_filename_to_serve 
-                    )
-                except Exception as e_send_file:
-                    logger.error(f"API Result: Lỗi khi gửi file '{file_to_serve_path}': {e_send_file}", exc_info=True)
-                    return jsonify({"error": "Lỗi khi chuẩn bị file để tải xuống."}), 500
-            else:
-                logger.error(f"API Result: Task {task_id} thành công nhưng file kết quả '{file_to_serve_path}' không tồn tại trên server.")
-                return jsonify({"error": "File kết quả không tìm thấy trên server. Có thể đã bị xóa hoặc lỗi lưu trữ."}), 404
-        else:
-            logger.error(f"API Result: Task {task_id} thành công nhưng thiếu thông tin file ('filename' hoặc 'OUTPUT_DIR') trong kết quả: {result_data}")
-            return jsonify({"error": "Thông tin file kết quả không đầy đủ hoặc lỗi cấu hình server."}), 500
+        if not filename or not OUTPUT_DIR:
+            logger.error(f"[TTS Result] Task {task_id} thành công nhưng thiếu 'filename' hoặc OUTPUT_DIR.")
+            return jsonify({"error": "Thông tin file không đầy đủ hoặc cấu hình server lỗi."}), 500
+
+        file_path = os.path.join(OUTPUT_DIR, filename)
+        if not os.path.exists(file_path):
+            logger.error(f"[TTS Result] File '{file_path}' không tồn tại cho task {task_id}.")
+            return jsonify({"error": "File kết quả không tồn tại. Có thể đã bị xóa."}), 404
+
+        try:
+            logger.info(f"[TTS Result] Gửi file '{filename}' cho task {task_id}.")
+            return send_from_directory(
+                directory=os.path.abspath(OUTPUT_DIR),
+                path=filename,
+                as_attachment=True,
+                download_name=filename
+            )
+        except Exception as e:
+            logger.exception(f"[TTS Result] Lỗi khi gửi file '{file_path}'")
+            return jsonify({"error": "Lỗi khi gửi file kết quả."}), 500
+
     elif task.failed():
-        logger.warning(f"API Result: Yêu cầu tải kết quả cho task {task_id} nhưng task đã thất bại.")
-        return jsonify({"error": "Xử lý tác vụ thất bại. Không có file kết quả để tải. Kiểm tra '/tts/status/<task_id>' để biết chi tiết."}), 400 
-    else: 
-        logger.info(f"API Result: Yêu cầu tải kết quả cho task {task_id} nhưng task chưa hoàn tất (Status: {task.status}).")
-        return jsonify({"message": "Xử lý chưa hoàn tất hoặc task ID không hợp lệ. Kiểm tra lại trạng thái.", "status": task.status.upper()}), 202 
+        logger.warning(f"[TTS Result] Task {task_id} đã thất bại.")
+        return jsonify({"error": "Tác vụ thất bại. Không có file kết quả."}), 400
 
-
-
+    else:
+        logger.info(f"[TTS Result] Task {task_id} chưa hoàn tất (trạng thái: {task.status}).")
+        return jsonify({
+            "message": "Tác vụ chưa hoàn tất hoặc task_id không hợp lệ.",
+            "status": task.status.upper()
+        }), 202
