@@ -1,0 +1,8 @@
+Flask>=2.2.5
+celery>=5.2.7
+redis>=4.5.1
+python-dotenv>=0.21.0
+torch>=2.0.0
+numpy>=1.24.0
+soundfile>=0.12.1
+TTS>=0.15.0
