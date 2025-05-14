@@ -213,4 +213,8 @@ Hầu hết các endpoint quan trọng (`/tts`, `/tts/status/*`, `/tts/result/*`
 * ...
 
 
+## License
+
+License © 2025 Tran Dai Nghia — see [LICENSE](./LICENSE) for details.
+
 
